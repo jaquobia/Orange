@@ -114,10 +114,10 @@ int main(int argc, char* argv[]) {
 
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
-    // glEnable(GL_MULTISAMPLE);
-    // glEnable(GL_CULL_FACE);
+    glEnable(GL_MULTISAMPLE);
+    glEnable(GL_CULL_FACE);
     glDepthFunc(GL_LEQUAL);
-    glDisable(GL_CULL_FACE);
+    // glDisable(GL_CULL_FACE);
 
     std::ifstream vertex_file (shaderPath / "cube.vert");
     std::ifstream fragment_file (shaderPath / "cube.frag");
@@ -143,7 +143,7 @@ int main(int argc, char* argv[]) {
     };
     // 0 1 2 3  4 5 6 7
     std::vector<uint32_t> indicies = {
-        3, 0, 1, 
+        3, 0, 1,
         3, 2, 0,
         2, 4, 0,
         2, 6, 4,
@@ -167,7 +167,7 @@ int main(int argc, char* argv[]) {
     auto proj = glm::perspective( fov, (float)width / (float)height, 0.01f, 100.0f );
 
     glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
-    glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, -10.0f);
     glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, 1.0f);
     glm::vec3 cameraRight = glm::normalize(glm::cross(worldUp, cameraFront));
     glm::vec3 cameraUp = glm::cross(cameraFront, cameraRight);
@@ -259,8 +259,6 @@ int main(int argc, char* argv[]) {
                         cameraFront = glm::normalize(direction);
                         cameraRight = glm::normalize(glm::cross(worldUp, cameraFront));
                         cameraUp = glm::cross(cameraFront, cameraRight);
-                        ignoreNextMouseEvent = true;
-                        SDL_WarpMouseInWindow(window, width / 2, height / 2);
                     }
                     else
                     {
