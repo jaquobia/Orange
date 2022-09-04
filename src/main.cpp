@@ -2,6 +2,7 @@
 #include <SDL.h>
 #include <span>
 #include <fstream>
+#include <chrono>
 #include <sstream>
 #include <filesystem>
 #include <glbinding/gl/gl.h>
@@ -65,6 +66,10 @@ uint32_t createShader(std::string vertex_data, std::string fragment_data) {
     return shaderProgram;
 }
 
+void printVector(glm::vec3 v) {
+    std::cout << '[' << v.x << ',' << v.y << ',' << v.z << "]\n";
+}
+
 int main(int argc, char* argv[]) {
     std::span args{argv, static_cast<uint32_t>(argc)};
     std::string filePath = std::string(args[0]);
@@ -74,8 +79,9 @@ int main(int argc, char* argv[]) {
 
     const uint32_t INITIAL_WIDTH = 800;
     const uint32_t INITIAL_HEIGHT = 600;
-    const float ROTATION_SPEED = 0.05;
-    const float MOVEMENT_SPEED = 0.5;
+    const float ROTATION_SPEED = 5.0;
+    const float MOVEMENT_SPEED = 5.0;
+
 
     float fov = glm::radians(60.0f);
     int width = 800;
@@ -93,21 +99,23 @@ int main(int argc, char* argv[]) {
 
     bool should_window_close = false;
     bool wireframe_mode = false;
+    bool capture_mouse = false;
+    bool vsync = true;
     bool key_w = false;
     bool key_s = false;
     bool key_a = false;
     bool key_d = false;
-    bool key_x = false;
-    bool key_c = false;
+    bool key_space = false;
+    bool key_shift = false;
+    bool key_v = false;
+    bool key_b = false;
 
-    float rotation = 0;
-    float radius = 10;
-    float ypos = 0;
+    bool ignoreNextMouseEvent = false;
 
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
-    glEnable(GL_MULTISAMPLE);
+    // glEnable(GL_MULTISAMPLE);
+    // glEnable(GL_CULL_FACE);
     glDepthFunc(GL_LEQUAL);
     glDisable(GL_CULL_FACE);
 
@@ -134,7 +142,7 @@ int main(int argc, char* argv[]) {
         { {  0.5,  0.5, -0.5 }, { 1.0, 0.0, 0.0 } },
     };
     // 0 1 2 3  4 5 6 7
-    std::vector<uint32_t> indicies = { 
+    std::vector<uint32_t> indicies = {
         3, 0, 1, 
         3, 2, 0,
         2, 4, 0,
@@ -143,8 +151,8 @@ int main(int argc, char* argv[]) {
         3, 1, 5,
         6, 2, 3,
         6, 3, 7,
-        4, 0, 1,
-        4, 1, 5,
+        4, 1, 0,
+        4, 5, 1,
         7, 5, 4,
         7, 4, 6,
     };
@@ -157,6 +165,18 @@ int main(int argc, char* argv[]) {
 
     // auto proj = glm::perspectiveFov( fov, (float)width, (float)height, 0.01f, 100.0f );
     auto proj = glm::perspective( fov, (float)width / (float)height, 0.01f, 100.0f );
+
+    glm::vec3 worldUp = { 0.0f, 1.0f, 0.0f };
+    glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, 1.0f);
+    glm::vec3 cameraRight = glm::normalize(glm::cross(worldUp, cameraFront));
+    glm::vec3 cameraUp = glm::cross(cameraFront, cameraRight);
+
+    float yaw = 0.0, pitch = 0.0;
+
+
+    auto lastTime = std::chrono::high_resolution_clock::now();
+
     SDL_Event event;
     while (!should_window_close) {
         while(SDL_PollEvent(&event)) {
@@ -195,52 +215,111 @@ int main(int argc, char* argv[]) {
                         case SDL_SCANCODE_D: {
                             key_d = event.key.state == SDL_PRESSED;
                         }break;
-                        case SDL_SCANCODE_X: {
-                            key_x = event.key.state == SDL_PRESSED;
+                        case SDL_SCANCODE_SPACE: {
+                            key_space = event.key.state == SDL_PRESSED;
                         }break;
-                        case SDL_SCANCODE_C: {
-                            key_c = event.key.state == SDL_PRESSED;
+                        case SDL_SCANCODE_LSHIFT: {
+                            key_shift = event.key.state == SDL_PRESSED;
                         }break;
+                        case SDL_SCANCODE_V: {
+                            if (event.key.state == SDL_RELEASED) {
+                                vsync = !vsync;
+                                SDL_GL_SetSwapInterval(vsync);
+                            }
+                        }break;
+                        case SDL_SCANCODE_B: {
+                            if (event.key.state == SDL_RELEASED) {
+                                capture_mouse = !capture_mouse;
+
+                                // SDL_CaptureMouse(capture_mouse ? SDL_TRUE : SDL_FALSE);
+                                // SDL_SetWindowMouseGrab(window, capture_mouse ? SDL_TRUE : SDL_FALSE);
+                                SDL_SetRelativeMouseMode(capture_mouse ? SDL_TRUE : SDL_FALSE);
+                                ignoreNextMouseEvent = true;
+                            }
+                        }break;
+                    }
+                } break;
+                case SDL_MOUSEMOTION: {
+                    if (capture_mouse && !ignoreNextMouseEvent) {
+                        float sensitivity = 0.2;
+                        float xOffset = (float)event.motion.xrel * sensitivity;
+                        float yOffset = -(float)event.motion.yrel * sensitivity;
+
+                        yaw += xOffset;
+                        pitch += yOffset;
+                        if(pitch > 89.0f)
+                            pitch =  89.0f; 
+                        if(pitch < -89.0f)
+                            pitch = -89.0f;
+
+                        glm::vec3 direction;
+                        direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+                        direction.y = sin(glm::radians(pitch));
+                        direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+                        cameraFront = glm::normalize(direction);
+                        cameraRight = glm::normalize(glm::cross(worldUp, cameraFront));
+                        cameraUp = glm::cross(cameraFront, cameraRight);
+                        ignoreNextMouseEvent = true;
+                        SDL_WarpMouseInWindow(window, width / 2, height / 2);
+                    }
+                    else
+                    {
+                        ignoreNextMouseEvent = false;
                     }
                 } break;
             }
         }
 
+        const double SECOND_TO_MICRO = 1000000.0;
+        auto nowTime = std::chrono::high_resolution_clock::now();
+        auto elapsedTime = std::chrono::duration_cast<std::chrono::microseconds>(nowTime - lastTime).count() / SECOND_TO_MICRO;
+        lastTime = nowTime;
+
+        float speed = MOVEMENT_SPEED * elapsedTime;
+    
         if (key_a) {
-            rotation -= ROTATION_SPEED;
+            cameraPos += speed * cameraRight;
         }
         if (key_d) {
-            rotation += ROTATION_SPEED;
+            cameraPos -= speed * cameraRight;
         }
         if (key_w) {
-            radius = std::max(radius - MOVEMENT_SPEED, 0.0f);
+            cameraPos += speed * cameraFront;
         }
         if (key_s) {
-            radius = std::min(radius + MOVEMENT_SPEED, 30.0f);
+            cameraPos -= speed * cameraFront;
         }
-        if (key_x) {
-            ypos = std::min(ypos + MOVEMENT_SPEED, 10.0f);
+        if (key_space) {
+            cameraPos += speed * cameraUp;
         }
-        if (key_c) {
-            ypos = std::max(ypos - MOVEMENT_SPEED, -10.0f);
+        if (key_shift) {
+            cameraPos -= speed * cameraUp;
         }
 
-        auto x = radius * sin(rotation);
-        auto z = radius * cos(rotation);
-        glm::vec3 camera_pos = { x, ypos, z };
-        glm::vec3 cube_pos = { 0.0f, 0.0f, 0.0f };
-        auto view = glm::lookAt(camera_pos, cube_pos, { 0.0f, 1.0f, 0.0f });
-        auto model = glm::translate(glm::mat4(1.0), cube_pos);
-        auto mvp = proj * view * model;
+
+        auto view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+        auto vp = proj * view;
 
         glClearColor(0.5, 1.0, 0.3, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glUseProgram(shaderProgram);
 
+        // for (int i = 0; i < 16; i++)
+        // {
+        //     for (int j = 0; j < 16; j++)
+        //     {
+            //     for (int k = 0; k < 16; k++)
+            //     {
+
+        glm::vec3 cube_pos = { (float)0, (float)0, (float)0 };
+        auto model = glm::translate(glm::mat4(1.0), cube_pos);
+        auto mvp = vp * model;
         unsigned int transformLoc = glGetUniformLocation(shaderProgram, "mvp");
         glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(mvp));
-
         cube_mdl.drawElementsAll();
+        //         }
+        //     }
+        // }
 
         SDL_GL_SwapWindow(window);
 
